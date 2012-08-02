@@ -1,0 +1,72 @@
+#!/usr/bin/env ruby
+require 'net/http'
+require 'json'
+
+require 'main'
+require 'terminal-table'
+
+Main {
+  argument('query'){
+    description "A Lucene query string."
+  }
+
+  argument('clusters'){
+    description "A list of clusters to query."
+    arity -2
+  }
+
+  def run
+    results = query_clusters(params[:query].value, params[:clusters].values)
+    pretty_print(results)
+  end
+
+  def pretty_print(results)
+    rows = results.map{ |r| 
+      f = {}
+      r["_source"]["@fields"].each { |k,v| f[k] = extract(v) }
+
+      [
+        truncate(f["hostname"], 30),
+        truncate(f["procid"], 30),
+        truncate(f["message"], 50)
+      ] 
+    }
+    table = Terminal::Table.new :headings => ['Hostname', 'Process ID', 'Message'],
+                                :rows => rows
+
+    puts table
+  end
+
+  def extract(val)
+    val = *val
+    val.empty? ? "" : val.first
+  end
+
+  def truncate(val, len)
+    val ||= ""
+    val[0..len]
+  end
+
+  def query_clusters(query, clusters)
+    results = clusters.map{ |c| query_cluster(query, c) }.flatten
+    results.sort_by { |r| -r["_score"].to_i }
+  end
+
+  def query_cluster(query, cluster)
+    http = Net::HTTP.new(cluster)
+    response = http.post('/_search', query_string(query))
+    JSON.parse(response.body)["hits"]["hits"]
+  end
+
+  def query_string(query)
+    {
+      "query" => {
+        "query_string" => {
+          "query" => query
+        }
+      }
+    }.to_json
+  end
+
+
+}
