@@ -1,6 +1,7 @@
 #!/usr/bin/env ruby
 require 'net/http'
 require 'json'
+require 'time'
 
 require 'main'
 require 'terminal-table'
@@ -15,24 +16,73 @@ Main {
     arity -2
   }
 
+  option('limit', 'l'){
+    description 'The maximum number of results to return.'
+    argument :optional
+    cast :int
+    defaults 40
+  }
+
+  option('pretty', 'p'){
+    description 'Enable pretty printing.'
+  }
+
+  option('json', 'j'){
+    description 'Output JSON.'
+  }
+
   def run
     results = query_clusters(params[:query].value, params[:clusters].values)
-    pretty_print(results)
+
+    if params[:json].given?
+      print_json(results, params[:pretty].given?)
+    else
+      print(results, params[:pretty].given?)
+    end
   end
 
-  def pretty_print(results)
+  def print_json(results, pretty)
+    if pretty
+      puts JSON.pretty_generate(results)
+    else
+      puts JSON.dump(results)
+    end
+  end
+
+  def print(results, pretty)
     rows = results.map{ |r| 
       f = {}
       r["_source"]["@fields"].each { |k,v| f[k] = extract(v) }
 
-      [
-        truncate(f["hostname"], 30),
-        truncate(f["procid"], 30),
-        truncate(f["message"], 50)
-      ] 
+      if pretty
+        [
+          format_time(f["timestamp"]),
+          truncate(f["hostname"], 30),
+          truncate(f["appname"], 30),
+          truncate(f["procid"], 30),
+          truncate(f["message"], 50)
+        ] 
+      else
+        [
+          f["timestamp"],
+          f["hostname"],
+          f["appname"],
+          f["procid"],
+          f["message"]
+        ] 
+      end
     }
-    table = Terminal::Table.new :headings => ['Hostname', 'Process ID', 'Message'],
-                                :rows => rows
+
+    style = {}
+    unless pretty
+      style = { :border_x => " ", :border_y => " ", :border_i => " "}
+    end
+
+    table = Terminal::Table.new( 
+      :headings => ['Timestamp', 'Hostname', 'App Name', 'Process ID', 'Message'],
+      :rows => rows,
+      :style => style
+    )
 
     puts table
   end
@@ -47,9 +97,15 @@ Main {
     val[0..len]
   end
 
+  def format_time(val)
+    Time.parse(val).strftime("%Y-%m-%d %H:%M")
+  rescue
+    ""
+  end
+
   def query_clusters(query, clusters)
     results = clusters.map{ |c| query_cluster(query, c) }.flatten
-    results.sort_by { |r| -r["_score"].to_i }
+    results.sort_by { |r| -r["_score"].to_i } .take(params[:limit].value)
   end
 
   def query_cluster(query, cluster)
@@ -60,6 +116,7 @@ Main {
 
   def query_string(query)
     {
+      "from" => 0, "size" => params[:limit].value,
       "query" => {
         "query_string" => {
           "query" => query
@@ -67,6 +124,5 @@ Main {
       }
     }.to_json
   end
-
 
 }
