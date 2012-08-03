@@ -16,6 +16,10 @@ Main {
     arity -2
   }
 
+  option('raw', 'r'){
+    description 'Send a raw ElasticSearch REST query.'
+  }
+
   option('limit', 'l'){
     description 'The maximum number of results to return.'
     argument :optional
@@ -115,14 +119,18 @@ Main {
   end
 
   def query_string(query)
-    {
-      "from" => 0, "size" => params[:limit].value,
-      "query" => {
-        "query_string" => {
-          "query" => query
+    if params[:raw].given?
+      query.to_json
+    else
+      {
+        "from" => 0, "size" => params[:limit].value,
+        "query" => {
+          "query_string" => {
+            "query" => query
+          }
         }
-      }
-    }.to_json
+      }.to_json
+    end
   end
 
 }
