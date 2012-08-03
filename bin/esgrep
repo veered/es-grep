@@ -20,6 +20,18 @@ Main {
     description 'Send a raw ElasticSearch REST query.'
   }
 
+  option('field', 'f'){
+    description 'Search by field.'
+    argument :optional
+    defaults '_all'
+  }
+
+  option('app', 'a'){
+    description 'Filter the search by app name.'
+    argument :optional
+    defaults '*'
+  }
+
   option('limit', 'l'){
     description 'The maximum number of results to return.'
     argument :optional
@@ -124,11 +136,23 @@ Main {
     else
       {
         "from" => 0, "size" => params[:limit].value,
+
         "query" => {
-          "query_string" => {
-            "query" => query
+            "query_string" => {
+              "query" => query,
+              "default_field" => params[:field].value
+            }
+          },
+
+          "filter" => {
+            "query" => {
+              "query_string" => {
+                "query" => params[:app].value,
+                "default_field" => "appname"
+              }
+            }
           }
-        }
+          
       }.to_json
     end
   end
