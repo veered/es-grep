@@ -1,6 +1,9 @@
 = es-grep
 
-Description goes here.
+A grep like tool for querying ElasticSearch clusters.
+    es-grep -p ERROR es.cluster.company.com
+
+Requires Ruby >= 1.9.
 
 == Contributing to es-grep
  
