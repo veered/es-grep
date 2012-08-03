@@ -20,6 +20,10 @@ Main {
     description 'Send a raw ElasticSearch REST query.'
   }
 
+  option('dump', 'd'){
+    description 'Print the ElasticSearch query used to perform the search.'
+  }
+
   option('field', 'f'){
     description 'Search by field.'
     argument :optional
@@ -29,7 +33,11 @@ Main {
   option('app', 'a'){
     description 'Filter the search by app name.'
     argument :optional
-    defaults '*'
+  }
+
+  option('host', 's'){
+    description 'Filter by the source\'s hostname'
+    argument :optional
   }
 
   option('limit', 'l'){
@@ -48,13 +56,19 @@ Main {
   }
 
   def run
-    results = query_clusters(params[:query].value, params[:clusters].values)
+    total, results = query_clusters(params[:query].value, params[:clusters].values)
 
     if params[:json].given?
       print_json(results, params[:pretty].given?)
     else
-      print(results, params[:pretty].given?)
+      print(total, results, params[:pretty].given?)
     end
+
+    if params[:dump].given?
+      puts ""
+      puts "Query: #{query_string(params[:query].value)}"
+    end
+    
   end
 
   def print_json(results, pretty)
@@ -65,7 +79,10 @@ Main {
     end
   end
 
-  def print(results, pretty)
+  def print(total, results, pretty)
+    puts "Results Found: #{total}"
+    puts "Results Displayed: #{results.size}"
+
     rows = results.map{ |r| 
       f = {}
       r["_source"]["@fields"].each { |k,v| f[k] = extract(v) }
@@ -120,21 +137,34 @@ Main {
   end
 
   def query_clusters(query, clusters)
-    results = clusters.map{ |c| query_cluster(query, c) }.flatten
+
+    total = 0
+    results = []
+
+    clusters.each do |c| 
+      response = query_cluster(query, c)
+
+      total += response["hits"]["total"]
+      results << response["hits"]["hits"]
+    end
+
+    results.flatten!
     results.sort_by { |r| -r["_score"].to_i } .take(params[:limit].value)
+
+    [total, results]
   end
 
   def query_cluster(query, cluster)
     http = Net::HTTP.new(cluster)
     response = http.post('/_search', query_string(query))
-    JSON.parse(response.body)["hits"]["hits"]
+    JSON.parse(response.body)
   end
 
   def query_string(query)
     if params[:raw].given?
       query.to_json
     else
-      {
+      q = {
         "from" => 0, "size" => params[:limit].value,
 
         "query" => {
@@ -142,18 +172,33 @@ Main {
               "query" => query,
               "default_field" => params[:field].value
             }
-          },
+          }
+        }
 
-          "filter" => {
-            "query" => {
-              "query_string" => {
-                "query" => params[:app].value,
-                "default_field" => "appname"
-              }
+      if params[:app].given? or params[:host].given?
+        q["filter"] = {}
+        q["filter"]["and"] = []
+      end
+
+      if params[:app].given?
+        q["filter"]["and"] <<
+          { 
+            "term" => {
+              "appname" => params[:app].value,
             }
           }
-          
-      }.to_json
+      end
+
+      if params[:host].given?
+        q["filter"]["and"] <<
+          {
+            "term" => {
+              "hostname" => params[:host].value
+            }
+          }
+      end
+
+      q.to_json
     end
   end
 
