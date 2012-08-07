@@ -168,20 +168,22 @@ Main {
         "from" => 0, "size" => params[:limit].value,
 
         "query" => {
-            "query_string" => {
-              "query" => query,
-              "default_field" => params[:field].value
-            }
+          "bool" => {
+            "must" => []
+          }
+        }
+      }
+
+      q["query"]["bool"]["must"] <<
+        {
+          "query_string" => {
+            "query" => query,
+            "default_field" => params[:field].value
           }
         }
 
-      if params[:app].given? or params[:host].given?
-        q["filter"] = {}
-        q["filter"]["and"] = []
-      end
-
       if params[:app].given?
-        q["filter"]["and"] <<
+        q["query"]["bool"]["must"] <<
           { 
             "term" => {
               "appname" => params[:app].value,
@@ -190,9 +192,9 @@ Main {
       end
 
       if params[:host].given?
-        q["filter"]["and"] <<
+        q["query"]["bool"]["must"] <<
           {
-            "term" => {
+            "text" => {
               "hostname" => params[:host].value
             }
           }
